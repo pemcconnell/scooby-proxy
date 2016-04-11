@@ -30,23 +30,48 @@ func main() {
 		Port:             *port,
 		HtpasswdEnabled:  true,
 	}
-	nginxTemplate, err := template.ParseFiles("nginxconf.tmpl")
+	nginxTemplate, err := template.New("nginxconf").Parse(`server {
+    listen       80;
+    server_name  {{.Subdomain}}.{{.Tld}};
+
+    error_log /var/log/nginx/error.log;
+    access_log /var/log/nginx/access.log;
+
+    location / {
+        {{if .HtpasswdEnabled}}
+        auth_basic                       "Restricted";
+        auth_basic_user_file             /etc/nginx/htpasswd.d/{{.Subdomain}};
+        {{end}}
+        resolver            {{.Resolver}};
+        proxy_pass          http://{{.Subdomain}}.default.svc.cluster.local:{{.Port}}; 
+        proxy_set_header    X-Real-IP   $remote_addr;
+        proxy_set_header    Upgrade     $http_upgrade;
+        proxy_set_header    Host        $http_host;
+    }
+}`)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = nginxTemplate.Execute(os.Stdout, conf)
+	f, err := os.Create("/etc/nginx/conf.d/" + *subdomain)
+	if err != nil {
+		log.Println("create file: ", err)
+		return
+	}
+	err = nginxTemplate.Execute(f, conf)
 	if err != nil {
 		log.Fatal(err)
 	}
-	
+	f.Close()
 	// htpasswd
 	dir := "/etc/nginx/htpasswd.d/"
-	err = os.Mkdir(dir, 0755)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		err = os.Mkdir(dir, 0755)
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
 	data := []byte(*htpasswd)
-	f, err := os.Create(dir + *subdomain)
+	f, err = os.Create(dir + *subdomain)
 	if err != nil {
 		log.Fatal(err)
 	}
