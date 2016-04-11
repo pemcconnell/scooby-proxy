@@ -8,26 +8,27 @@ import (
 )
 
 type NginxConf struct {
-	Resolver  *string
-	Subdomain *string
-	Tld       *string
-	Port      *string
-	Htpasswd  bool
+	Resolver         string
+	Subdomain        string
+	Tld              string
+	Port             string
+	HtpasswdEnabled  bool
 }
 
 func main() {
-	var (
-		resolver  = flag.String("resolver", "", "Specify the resolver")
-		subdomain = flag.String("subdomain", "", "Specify the subdomain")
-		tld       = flag.String("tld", "", "Specify the top-level domain")
-		port      = flag.String("port", "", "Specify the port")
-	)
+	
+	resolver := flag.String("resolver", "", "Specify the resolver")
+	subdomain := flag.String("subdomain", "", "Specify the subdomain")
+	tld := flag.String("tld", "", "Specify the top-level domain")
+	port := flag.String("port", "80", "Specify the port")
+	htpasswd := flag.String("htpasswd", "scooby:$apr1$RCZ6WLU9$AM8ha8UfdrxmiPOG.wqjf0", "Enter the htpasswd") // default: scooby/doo
+	flag.Parse()
 	conf := NginxConf{
-		Resolver:  resolver,
-		Subdomain: subdomain,
-		Tld:       tld,
-		Port:      port,
-		Htpasswd:  true,
+		Resolver:         *resolver,
+		Subdomain:        *subdomain,
+		Tld:              *tld,
+		Port:             *port,
+		HtpasswdEnabled:  true,
 	}
 	nginxTemplate, err := template.ParseFiles("nginxconf.tmpl")
 	if err != nil {
@@ -37,4 +38,22 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	
+	// htpasswd
+	dir := "/etc/nginx/htpasswd.d/"
+	err = os.Mkdir(dir, 0755)
+	if err != nil {
+		log.Fatal(err)
+	}
+	data := []byte(*htpasswd)
+	f, err := os.Create(dir + *subdomain)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	_, err = f.Write(data)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 }

@@ -6,7 +6,7 @@ server {
     access_log /var/log/nginx/access.log;
 
     location / {
-        {{if .Htpasswd}}
+        {{if .HtpasswdEnabled}}
         auth_basic                       "Restricted";
         auth_basic_user_file             /etc/nginx/htpasswd.d/{{.Subdomain}};
         {{end}}
