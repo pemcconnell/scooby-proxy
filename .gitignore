@@ -25,4 +25,4 @@ _testmain.go
 
 .DS_Store
 config.json
-scooby_proxy_alpine
+.kube
