@@ -28,7 +28,7 @@ type ApiResponsePodItemMetadata struct {
 }
 
 type ApiResponsePodItemMetadataLabel struct {
-	Name string `json:"name"`
+	Subdomain string `json:"subdomain"`
 }
 
 type ApiResponsePodItemSpec struct {
@@ -125,7 +125,7 @@ func generateConfigsFromKubernetesAPI(config Config) {
 			// don't add ourself
 			continue
 		}
-		createNginxConfig(config, subdomain, pods.Items[i].Spec.Containers[0].Ports[0].ContainerPort)
+		createNginxConfig(config, pods.Items[i].Metadata.Labels.Subdomain, pods.Items[i].Spec.Containers[0].Ports[0].ContainerPort)
 	}
 }
 
@@ -151,7 +151,7 @@ func createNginxConfig(config Config, subdomain string, port int) {
         auth_basic_user_file             /etc/nginx/htpasswd.d/{{.Subdomain}};
         {{end}}
         resolver            {{.Resolver}};
-        proxy_pass          http://{{.Subdomain}}.default.svc.cluster.local:{{.Port}}; 
+        proxy_pass          http://{{.Subdomain}}.scooby.svc.cluster.local:{{.Port}}; 
         proxy_set_header    X-Real-IP   $remote_addr;
         proxy_set_header    Upgrade     $http_upgrade;
         proxy_set_header    Host        $http_host;
