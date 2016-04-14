@@ -24,3 +24,5 @@ _testmain.go
 *.prof
 
 .DS_Store
+config.json
+scooby_proxy_alpine

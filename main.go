@@ -1,34 +1,113 @@
 package main
 
 import (
-	"flag"
 	"log"
 	"os"
+	"net/http"
+	"os/exec"
+	"fmt"
+	"encoding/json"
+	"io/ioutil"
 	"text/template"
 )
+
+type ApiResponsePods struct {
+	Items []ApiResponsePodItems `json:"items"`
+}
+
+type ApiResponsePodItems struct {
+	Metadata ApiResponsePodItemMetadata `json:"metadata"`
+	Spec     ApiResponsePodItemSpec `json:"spec"`
+}
+
+type ApiResponsePodItemMetadata struct {
+	Name string `json:"name"`
+	Labels ApiResponsePodItemMetadataLabel `json:"labels"`
+}
+
+type ApiResponsePodItemMetadataLabel struct {
+	Name string `json:"name"`
+}
+
+type ApiResponsePodItemSpec struct {
+	Containers []ApiResponsePodItemSpecContainers `json:"containers"`
+}
+
+type ApiResponsePodItemSpecContainers struct {
+	Name string `json:"name"`
+	Image string `json:"image"`
+	Ports []ApiResponsePodItemSpecContainerPorts `json:"ports"`
+}
+
+type ApiResponsePodItemSpecContainerPorts struct {
+	ContainerPort int `json:"containerPort"`
+}
 
 type NginxConf struct {
 	Resolver         string
 	Subdomain        string
 	Tld              string
-	Port             string
+	Port             int
 	HtpasswdEnabled  bool
 }
 
+type Config struct {
+	Resolver string `json:"resolver"`
+	Tld string `json:"tld"`
+	HtpasswdEnabled bool `json:"htpasswdenabled"`
+	DefaultHtpasswd string `json:"defaulthtpasswd"`
+	Namespace string `json:"namespace"`
+}
+
 func main() {
-	
-	resolver := flag.String("resolver", "", "Specify the resolver")
-	subdomain := flag.String("subdomain", "", "Specify the subdomain")
-	tld := flag.String("tld", "", "Specify the top-level domain")
-	port := flag.String("port", "80", "Specify the port")
-	htpasswd := flag.String("htpasswd", "scooby:$apr1$RCZ6WLU9$AM8ha8UfdrxmiPOG.wqjf0", "Enter the htpasswd") // default: scooby/doo
-	flag.Parse()
+	// load config
+	url := "config.json"
+	file, e := ioutil.ReadFile(url)
+	if e != nil {
+        fmt.Printf("File error: %v\n", e)
+        os.Exit(1)
+    }
+    var config Config
+    json.Unmarshal(file, &config)
+    
+
+	generateConfigsFromKubernetesAPI(config)
+
+	// reload nginx
+	cmd := "nginx"
+	args := []string{"-s", "reload"}
+	if err := exec.Command(cmd, args...).Run(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func generateConfigsFromKubernetesAPI(config Config) {
+	url := "https://" + os.Getenv("KUBERNETES_SERVICE_HOST") + ":" + os.Getenv("KUBERNETES_PORT_443_TCP_PORT") + "/api/v1/namespaces/" + config.Namespace + "/pods"
+	res, err := http.Get(url)
+    if err != nil {
+    	log.Fatal(err)
+    }
+    defer res.Body.Close()
+
+	file, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+        log.Fatal(err)
+    }
+    var pods ApiResponsePods
+    json.Unmarshal(file, &pods)
+    for i := 0; i < len(pods.Items); i++ {
+    	createNginxConfig(config, pods.Items[i].Metadata.Labels.Name, pods.Items[i].Spec.Containers[0].Ports[0].ContainerPort)
+    }
+}
+
+func createNginxConfig(config Config, subdomain string, port int) {
+	htpasswd := config.DefaultHtpasswd
 	conf := NginxConf{
-		Resolver:         *resolver,
-		Subdomain:        *subdomain,
-		Tld:              *tld,
-		Port:             *port,
-		HtpasswdEnabled:  true,
+		Resolver:         config.Resolver,
+		Tld:              config.Tld,
+		HtpasswdEnabled:  config.HtpasswdEnabled,
+		Subdomain:        subdomain,
+		Port:             port,
 	}
 	nginxTemplate, err := template.New("nginxconf").Parse(`server {
     listen       80;
@@ -52,7 +131,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	f, err := os.Create("/etc/nginx/conf.d/" + *subdomain)
+	f, err := os.Create("/etc/nginx/conf.d/" + subdomain)
 	if err != nil {
 		log.Println("create file: ", err)
 		return
@@ -70,8 +149,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	data := []byte(*htpasswd)
-	f, err = os.Create(dir + *subdomain)
+	data := []byte(htpasswd)
+	f, err = os.Create(dir + subdomain)
 	if err != nil {
 		log.Fatal(err)
 	}
