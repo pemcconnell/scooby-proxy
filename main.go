@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"text/template"
+	"crypto/tls"
 )
 
 type ApiResponsePods struct {
@@ -82,8 +83,18 @@ func main() {
 }
 
 func generateConfigsFromKubernetesAPI(config Config) {
+	token, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+	if err != nil {
+		log.Fatal(err)
+	}
+	tr := &http.Transport{
+        TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+    }
+    client := &http.Client{Transport: tr}
 	url := "https://" + os.Getenv("KUBERNETES_SERVICE_HOST") + ":" + os.Getenv("KUBERNETES_PORT_443_TCP_PORT") + "/api/v1/namespaces/" + config.Namespace + "/pods"
-	res, err := http.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", string(token)))
+	res, err := client.Do(req)
     if err != nil {
     	log.Fatal(err)
     }
